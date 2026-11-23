@@ -1,7 +1,10 @@
+import os
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from .database.database import init_db
 from .scheduler.scheduler_engine import scheduler_engine
 from .process_manager.process_controller import process_controller
@@ -25,13 +28,13 @@ async def lifespan(app: FastAPI):
     process_controller.cleanup_all()
 
 app = FastAPI(
-    title="NEXUS Process Manager API",
-    description="Real Linux Process Scheduling and Resource Management Backend",
+    title="NEXUS Enterprise Process Supervisor",
+    description="Linux Process Scheduling and Real-Time Telemetry Management Platform",
     version="1.0.0",
     lifespan=lifespan
 )
 
-# Enable CORS for frontend Vite development server
+# Enable CORS for frontend development and API consumers
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -47,6 +50,26 @@ app.include_router(ws_router)
 async def health_check():
     return {"status": "ok", "service": "NEXUS Process Manager"}
 
+# Static and SPA routing for unified production deployment
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+FRONTEND_DIST = os.path.join(BASE_DIR, "frontend", "dist")
+ASSETS_DIR = os.path.join(FRONTEND_DIST, "assets")
+
+if os.path.isdir(ASSETS_DIR):
+    app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+
+@app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
+async def serve_spa(full_path: str):
+    file_path = os.path.join(FRONTEND_DIST, full_path)
+    if full_path and os.path.isfile(file_path):
+        return FileResponse(file_path)
+    index_file = os.path.join(FRONTEND_DIST, "index.html")
+    if os.path.isfile(index_file):
+        return FileResponse(index_file)
+    return {"message": "NEXUS Process Manager API is operational. Run 'npm run build' in frontend to enable UI."}
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("backend.app.main:app", host="0.0.0.0", port=8000, reload=True)
+    host = os.environ.get("HOST", "0.0.0.0")
+    port = int(os.environ.get("PORT", "8000"))
+    uvicorn.run("backend.app.main:app", host=host, port=port, reload=True)

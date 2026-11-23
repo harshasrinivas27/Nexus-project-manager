@@ -122,27 +122,61 @@ cd /home/<username>/nexus-process-manager
 
 ---
 
-## 5. Running the Application
+## 5. Running & Deploying the Application
 
-### 5.1 Start the FastAPI Backend
-In your first terminal (inside Ubuntu / WSL 2):
-```bash
-cd /home/<username>/nexus-process-manager
-source backend/venv/bin/activate
-python backend/run.py
-```
-The backend API server will start at `http://localhost:8000`. You can inspect the Swagger documentation at `http://localhost:8000/docs`.
+### 5.1 Quick Unified Production Launch (Single Port :8000)
+Run both the compiled high-performance React UI and the FastAPI Linux process engine from a single unified server:
 
-### 5.2 Start the Vite Frontend Server
-In your second terminal (inside Ubuntu / WSL 2):
 ```bash
-cd /home/<username>/nexus-process-manager/frontend
-npm run dev
+# Build frontend and start the unified server
+chmod +x deploy.sh
+./deploy.sh
 ```
-Open your browser on Windows and navigate to:
+Or manually:
+```bash
+# 1. Build frontend distribution
+cd frontend && npm run build && cd ..
+
+# 2. Run backend (serves UI at /, API at /api, WebSockets at /ws/live)
+backend/venv/bin/python backend/run.py
 ```
-http://localhost:5173
+Open your browser at:
 ```
+http://localhost:8000
+```
+
+---
+
+### 5.2 Docker & Container Deployment
+Run NEXUS in an isolated Linux container with complete POSIX process group controls:
+
+```bash
+# Build and start with Docker Compose
+docker compose up --build -d
+
+# Check running status
+docker compose ps
+```
+The unified container will be reachable at `http://localhost:8000`.
+
+---
+
+### 5.3 Local Development Mode (Hot Reload)
+
+For developers actively modifying TypeScript or Python code:
+
+1. **Start FastAPI Backend**:
+   ```bash
+   backend/venv/bin/python backend/run.py
+   ```
+   *(Backend starts on `http://localhost:8000` with Swagger docs at `http://localhost:8000/docs`)*
+
+2. **Start Vite Dev Server**:
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+   *(Frontend starts on `http://localhost:5173` with instant hot-module replacement)*
 
 ---
 
