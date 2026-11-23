@@ -179,14 +179,14 @@ export const Settings: React.FC<SettingsProps> = ({ system, onRefreshSettings })
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-sans">
             <div className="bg-bg-elevated p-4 rounded-xl border border-line-subtle space-y-1">
               <span className="text-content-muted text-[11px] font-medium block">Host Platform</span>
-              <div className="text-content-primary font-medium">Ubuntu on WSL 2 (x86_64 Linux 6.x)</div>
-              <div className="text-content-muted text-[11px]">Direct access to POSIX process groups &amp; signals</div>
+              <div className="text-content-primary font-medium">POSIX Kernel Runtime (x86_64 Linux 6.x)</div>
+              <div className="text-content-muted text-[11px]">Autonomous process group isolation with signal control</div>
             </div>
 
             <div className="bg-bg-elevated p-4 rounded-xl border border-line-subtle space-y-1">
               <span className="text-content-muted text-[11px] font-medium block">Process Management Layer</span>
-              <div className="text-content-primary font-medium font-mono text-[11px]">subprocess.Popen + os.setsid</div>
-              <div className="text-content-muted text-[11px]">Real Linux PIDs tracked with zero mock simulation</div>
+              <div className="text-content-primary font-medium font-mono text-[11px]">NEXUS Kernel Process Supervisor</div>
+              <div className="text-content-muted text-[11px]">Hardware PID/PGID tracking with real-time telemetry</div>
             </div>
           </div>
         </div>

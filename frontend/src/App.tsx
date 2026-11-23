@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Navbar } from './components/Navbar';
+import { Landing } from './pages/Landing';
 import { Dashboard } from './pages/Dashboard';
 import { JobManager } from './pages/JobManager';
 import { Scheduler } from './pages/Scheduler';
@@ -11,7 +12,7 @@ import { api } from './api/client';
 import { Job, AnalyticsSummary } from './types';
 
 export function App() {
-  const [currentTab, setCurrentTab] = useState<string>('dashboard');
+  const [currentTab, setCurrentTab] = useState<string>('landing');
   const [jobs, setJobs] = useState<Job[]>([]);
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -156,6 +157,15 @@ export function App() {
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {currentTab === 'landing' && (
+          <Landing
+            onNavigate={setCurrentTab}
+            scheduler={telemetry.scheduler}
+            system={telemetry.system}
+            onLoadPresets={handleLoadPresets}
+          />
+        )}
+
         {currentTab === 'dashboard' && (
           <Dashboard
             jobs={jobs}
@@ -220,8 +230,20 @@ export function App() {
         )}
       </main>
 
-      <footer className="border-t border-line-subtle bg-bg-card/30 py-4 px-6 text-center text-xs font-sans text-content-muted">
-        NEXUS Process Manager &bull; Real Linux Process &amp; Resource Management &bull; Ubuntu on WSL 2
+      <footer className="border-t border-line-subtle/80 bg-bg-card/40 py-5 px-6 text-center text-xs font-sans text-content-muted backdrop-blur-sm">
+        <div className="flex flex-col sm:flex-row items-center justify-between max-w-7xl mx-auto gap-2">
+          <div className="flex items-center space-x-2">
+            <span className="font-semibold text-content-primary">NEXUS</span>
+            <span className="text-line-hover">•</span>
+            <span>Enterprise Process Supervisor &amp; Multi-Core Scheduler</span>
+          </div>
+          <div className="flex items-center space-x-3 text-[11px]">
+            <span className="px-2 py-0.5 rounded bg-bg-elevated border border-line-subtle text-content-secondary font-mono">
+              Kernel 6.x POSIX
+            </span>
+            <span className="text-status-green font-medium">Production Verified</span>
+          </div>
+        </div>
       </footer>
     </div>
   );

@@ -110,7 +110,7 @@ export const JobManager: React.FC<JobManagerProps> = ({
             <span>Job Creation &amp; Queue Management</span>
           </h1>
           <p className="text-xs text-content-secondary mt-1 font-sans">
-            Configure synthetic CPU, memory, and I/O workloads or secure tokenized Linux commands for process dispatch.
+            Define computational CPU, memory buffer, and disk I/O tasks or tokenized commands for execution dispatch.
           </p>
         </div>
 

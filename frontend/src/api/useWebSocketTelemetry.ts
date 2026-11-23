@@ -27,7 +27,13 @@ export function useWebSocketTelemetry() {
     function connect() {
       if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-      const wsUrl = `ws://${window.location.hostname}:8000/ws/live`;
+      const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+      const wsProto = isHttps ? 'wss:' : 'ws:';
+      const wsHost = (import.meta as any).env?.VITE_WS_HOST ||
+        (typeof window !== 'undefined' && window.location.port === '5173'
+          ? `${window.location.hostname}:8000`
+          : (typeof window !== 'undefined' ? window.location.host : 'localhost:8000'));
+      const wsUrl = `${wsProto}//${wsHost}/ws/live`;
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {

@@ -194,7 +194,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold font-sans text-content-primary flex items-center space-x-2">
                 <Cpu className="w-4 h-4 text-accent-primary" />
-                <span>WSL 2 Hardware Telemetry</span>
+                <span>Host Hardware Telemetry</span>
               </h3>
               <span className="text-[11px] font-sans text-content-muted bg-bg-elevated px-2.5 py-0.5 rounded-full border border-line-subtle">
                 {system?.logical_cores || 1} Cores
@@ -348,7 +348,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           <div className="mt-5 pt-3.5 border-t border-line-subtle flex items-center justify-between text-xs font-sans text-content-muted">
-            <span>Each slot manages an isolated Linux child process group via POSIX signals</span>
+            <span>Dedicated execution slots isolated via POSIX process groups</span>
             <button
               onClick={() => onNavigate('scheduler')}
               className="text-accent-primary hover:text-accent-hover font-medium flex items-center space-x-1 transition-colors"

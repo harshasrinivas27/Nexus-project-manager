@@ -251,7 +251,7 @@ export const Analytics: React.FC<AnalyticsProps> = ({ analytics, gantt, jobs }) 
           <div className="bg-bg-elevated p-4 rounded-xl border border-line-subtle">
             <span className="text-accent-secondary font-semibold block mb-1">System Architecture Note</span>
             <p className="text-[11px] leading-relaxed text-content-muted">
-              NEXUS schedules user-space jobs into available execution slots. Linux kernel context switches occur transparently within WSL 2 at microsecond granularity.
+              NEXUS schedules user-space jobs into available execution slots. Linux kernel context switches occur transparently across hardware CPU cores at microsecond granularity.
             </p>
           </div>
         </div>

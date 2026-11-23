@@ -1,6 +1,9 @@
 import { Job, SchedulerStatus, ProcessLive, SystemMetrics, SystemSettings, AnalyticsSummary, GanttEvent } from '../types';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL ||
+  (typeof window !== 'undefined' && window.location.port === '5173'
+    ? 'http://localhost:8000/api'
+    : '/api');
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${url}`, {
