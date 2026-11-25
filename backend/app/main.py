@@ -1,3 +1,9 @@
+"""
+NEXUS Entry Point & Unified FastAPI Server.
+- Initializes the SQLite database (WAL mode) and loads persisted jobs on startup.
+- Starts the 500ms WebSocket telemetry background broadcaster.
+- Serves both the REST/WebSocket APIs (/api, /ws/live) and the compiled React SPA (frontend/dist).
+"""
 import os
 import asyncio
 from contextlib import asynccontextmanager

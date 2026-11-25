@@ -1,3 +1,8 @@
+/**
+ * Scheduling Analytics & Performance Evaluation Page.
+ * Displays measured averages (TAT, WT, RT, Utilization, Throughput), interactive Gantt chart,
+ * per-job breakdown, real SQLite run history comparisons, and 1-click CSV export.
+ */
 import React, { useState, useEffect } from 'react';
 import {
   BarChart3,
@@ -5,10 +10,12 @@ import {
   Zap,
   TrendingUp,
   Cpu,
-  GitCompare
+  GitCompare,
+  Download,
+  History
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
-import { AnalyticsSummary, GanttEvent, Job } from '../types';
+import { AnalyticsSummary, GanttEvent, Job, SchedulingRunHistory } from '../types';
 import { GanttChart } from '../components/GanttChart';
 import { MetricCard } from '../components/MetricCard';
 import { api } from '../api/client';
@@ -20,7 +27,7 @@ interface AnalyticsProps {
 }
 
 export const Analytics: React.FC<AnalyticsProps> = ({ analytics, gantt, jobs }) => {
-  const [, setHistoryRuns] = useState<any[]>([]);
+  const [historyRuns, setHistoryRuns] = useState<SchedulingRunHistory[]>([]);
 
   useEffect(() => {
     async function loadHistory() {
@@ -32,36 +39,93 @@ export const Analytics: React.FC<AnalyticsProps> = ({ analytics, gantt, jobs }) 
       }
     }
     loadHistory();
-  }, []);
+  }, [analytics?.completed_jobs, analytics?.algorithm]);
 
-  const comparisonData = [
-    {
-      name: 'FCFS',
-      avgWT: analytics?.algorithm === 'FCFS' && analytics.avg_waiting_time > 0 ? analytics.avg_waiting_time : 4.2,
-      avgTAT: analytics?.algorithm === 'FCFS' && analytics.avg_turnaround_time > 0 ? analytics.avg_turnaround_time : 9.5,
-      avgRT: analytics?.algorithm === 'FCFS' && analytics.avg_response_time > 0 ? analytics.avg_response_time : 3.8,
-    },
-    {
-      name: 'SJF',
-      avgWT: analytics?.algorithm === 'SJF' && analytics.avg_waiting_time > 0 ? analytics.avg_waiting_time : 2.6,
-      avgTAT: analytics?.algorithm === 'SJF' && analytics.avg_turnaround_time > 0 ? analytics.avg_turnaround_time : 7.4,
-      avgRT: analytics?.algorithm === 'SJF' && analytics.avg_response_time > 0 ? analytics.avg_response_time : 2.5,
-    },
-    {
-      name: 'Priority',
-      avgWT: analytics?.algorithm === 'PRIORITY' && analytics.avg_waiting_time > 0 ? analytics.avg_waiting_time : 3.4,
-      avgTAT: analytics?.algorithm === 'PRIORITY' && analytics.avg_turnaround_time > 0 ? analytics.avg_turnaround_time : 8.1,
-      avgRT: analytics?.algorithm === 'PRIORITY' && analytics.avg_response_time > 0 ? analytics.avg_response_time : 3.0,
-    },
-    {
-      name: 'Round Robin',
-      avgWT: analytics?.algorithm === 'ROUND_ROBIN' && analytics.avg_waiting_time > 0 ? analytics.avg_waiting_time : 3.8,
-      avgTAT: analytics?.algorithm === 'ROUND_ROBIN' && analytics.avg_turnaround_time > 0 ? analytics.avg_turnaround_time : 8.9,
-      avgRT: analytics?.algorithm === 'ROUND_ROBIN' && analytics.avg_response_time > 0 ? analytics.avg_response_time : 1.2,
-    },
+  const completedHistory = historyRuns.filter((r) => r.status === 'COMPLETED' && r.completed_jobs > 0);
+
+  const getLatestMeasuredForAlgo = (algoKey: string) => {
+    if (analytics?.algorithm === algoKey && analytics.completed_jobs > 0) {
+      return {
+        avgWT: analytics.avg_waiting_time,
+        avgTAT: analytics.avg_turnaround_time,
+        avgRT: analytics.avg_response_time,
+        measured: true,
+      };
+    }
+    const found = completedHistory.find((r) => r.algorithm === algoKey);
+    if (found) {
+      return {
+        avgWT: found.avg_waiting_time,
+        avgTAT: found.avg_turnaround_time,
+        avgRT: found.avg_response_time,
+        measured: true,
+      };
+    }
+    return { avgWT: 0, avgTAT: 0, avgRT: 0, measured: false };
+  };
+
+  const algoMeta = [
+    { key: 'FCFS', label: 'FCFS' },
+    { key: 'SJF', label: 'SJF / SRTF' },
+    { key: 'PRIORITY', label: 'Priority' },
+    { key: 'ROUND_ROBIN', label: 'Round Robin' },
   ];
 
+  const comparisonData = algoMeta.map((a) => {
+    const m = getLatestMeasuredForAlgo(a.key);
+    return {
+      name: m.measured ? a.label : `${a.label} (Not Run)`,
+      avgWT: m.avgWT,
+      avgTAT: m.avgTAT,
+      avgRT: m.avgRT,
+    };
+  });
+
+  const measuredCount = algoMeta.filter((a) => getLatestMeasuredForAlgo(a.key).measured).length;
+
   const jobsList = analytics?.jobs || jobs;
+
+  const handleExportCSV = () => {
+    const headerSummary = [
+      'NEXUS Process Supervisor - Scheduling Analytics Report',
+      `Evaluated Policy,${analytics?.algorithm || 'FCFS'}`,
+      `Completed Jobs,${analytics?.completed_jobs ?? 0}`,
+      `Avg Turnaround Time (s),${analytics?.avg_turnaround_time ?? 0}`,
+      `Avg Waiting Time (s),${analytics?.avg_waiting_time ?? 0}`,
+      `Avg Response Time (s),${analytics?.avg_response_time ?? 0}`,
+      `CPU Utilization (%),${analytics?.cpu_utilization ?? 0}`,
+      `Throughput (jobs/s),${analytics?.throughput ?? 0}`,
+      '',
+      'Job ID,Name,Workload Type,Priority,Arrival Time (s),Est Burst (s),Measured Runtime (s),Status,Waiting Time (s),Turnaround Time (s),Response Time (s)',
+    ];
+
+    const rows = jobsList.map((j) =>
+      [
+        j.id,
+        `"${(j.name || '').replace(/"/g, '""')}"`,
+        j.workload_type,
+        j.priority,
+        j.arrival_time.toFixed(2),
+        j.estimated_burst_time.toFixed(2),
+        j.elapsed_time.toFixed(2),
+        j.status,
+        j.waiting_time !== null && j.waiting_time !== undefined ? j.waiting_time.toFixed(2) : '',
+        j.turnaround_time !== null && j.turnaround_time !== undefined ? j.turnaround_time.toFixed(2) : '',
+        j.response_time !== null && j.response_time !== undefined ? j.response_time.toFixed(2) : '',
+      ].join(',')
+    );
+
+    const csvContent = [...headerSummary, ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `nexus-analytics-${(analytics?.algorithm || 'fcfs').toLowerCase()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6">
@@ -77,10 +141,19 @@ export const Analytics: React.FC<AnalyticsProps> = ({ analytics, gantt, jobs }) 
           </p>
         </div>
 
-        <div className="flex items-center space-x-2 text-xs font-sans">
+        <div className="flex flex-wrap items-center gap-2.5 text-xs font-sans">
           <span className="px-3 py-1.5 rounded-xl bg-bg-card border border-line-subtle text-content-secondary">
             Evaluated Policy: <span className="font-mono text-accent-primary font-semibold">{analytics?.algorithm || 'FCFS'}</span>
           </span>
+          <button
+            onClick={handleExportCSV}
+            disabled={jobsList.length === 0}
+            className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-accent-primary hover:bg-accent-hover text-bg-main font-semibold transition-all shadow-sm disabled:opacity-40"
+            title="Download measured scheduling metrics as CSV"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Export CSV Report</span>
+          </button>
         </div>
       </div>
 
@@ -203,16 +276,19 @@ export const Analytics: React.FC<AnalyticsProps> = ({ analytics, gantt, jobs }) 
 
       {/* Algorithm Benchmark Comparison */}
       <div className="bg-bg-card border border-line-subtle rounded-2xl p-6 shadow-card">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
             <h2 className="text-sm font-semibold font-sans text-content-primary flex items-center space-x-2">
               <GitCompare className="w-4 h-4 text-accent-primary" />
-              <span>Algorithm Benchmark Comparison (Identical Workload Suite)</span>
+              <span>Measured Algorithm Comparison</span>
             </h2>
             <p className="text-xs text-content-secondary font-sans mt-0.5">
-              Side-by-side comparative analysis of FCFS, SJF, Priority, and Round Robin on identical workloads.
+              Live comparison populated from genuine completed runs in SQLite. Run the same batch across multiple policies (Reset &rarr; Switch Policy &rarr; Start) to compare side by side.
             </p>
           </div>
+          <span className="text-[11px] font-mono px-3 py-1 rounded-xl bg-bg-elevated border border-line-subtle text-accent-secondary shrink-0 self-start">
+            {measuredCount} / 4 policies measured
+          </span>
         </div>
 
         <div className="h-64 w-full">
@@ -241,11 +317,37 @@ export const Analytics: React.FC<AnalyticsProps> = ({ analytics, gantt, jobs }) 
           </ResponsiveContainer>
         </div>
 
+        {completedHistory.length > 0 && (
+          <div className="mt-5 pt-4 border-t border-line-subtle">
+            <h3 className="text-xs font-semibold font-sans text-content-primary flex items-center space-x-1.5 mb-2.5">
+              <History className="w-3.5 h-3.5 text-accent-primary" />
+              <span>Recorded Run Log (Last {Math.min(5, completedHistory.length)} Completed Runs)</span>
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              {completedHistory.slice(0, 5).map((run) => (
+                <div key={run.id} className="bg-bg-elevated/70 border border-line-subtle rounded-xl p-3 text-[11px] font-sans flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-mono font-semibold text-accent-primary">
+                      {run.algorithm}{run.is_preemptive ? ' (Preemptive)' : ''}
+                    </span>
+                    <span className="text-content-muted font-mono">{run.completed_jobs}/{run.total_jobs} jobs</span>
+                  </div>
+                  <div className="flex justify-between font-mono text-content-secondary">
+                    <span>WT: <strong className="text-status-amber">{run.avg_waiting_time}s</strong></span>
+                    <span>TAT: <strong className="text-accent-primary">{run.avg_turnaround_time}s</strong></span>
+                    <span>RT: <strong className="text-status-green">{run.avg_response_time}s</strong></span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="mt-5 pt-4 border-t border-line-subtle text-xs font-sans text-content-secondary grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-bg-elevated p-4 rounded-xl border border-line-subtle">
             <span className="text-accent-primary font-semibold block mb-1">Theoretical Observation</span>
             <p className="text-[11px] leading-relaxed text-content-muted">
-              Shortest Job First systematically minimizes Average Waiting Time, whereas Round Robin delivers superior interactive Response Times ($RT$) for queued tasks by distributing time slices evenly.
+              Shortest Job First systematically minimizes Average Waiting Time, whereas Round Robin delivers superior interactive Response Times (RT) for queued tasks by distributing time slices evenly.
             </p>
           </div>
           <div className="bg-bg-elevated p-4 rounded-xl border border-line-subtle">

@@ -1,3 +1,8 @@
+/**
+ * Scheduling Policy & Engine Configuration Page.
+ * Configures FCFS, SJF/SRTF (preemptive toggle), Priority (preemptive toggle),
+ * Round Robin (time quantum slider), and concurrent Execution Slots (1-8).
+ */
 import React, { useState } from 'react';
 import {
   Cpu,

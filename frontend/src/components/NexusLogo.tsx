@@ -1,3 +1,6 @@
+/**
+ * Custom Geometric SVG Brand Emblem for NEXUS.
+ */
 import React from 'react';
 
 interface NexusLogoProps {

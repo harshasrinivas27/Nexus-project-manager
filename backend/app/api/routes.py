@@ -1,8 +1,17 @@
+"""
+NEXUS REST API Routes (/api/*).
+Handles interactive user actions:
+- Job CRUD, standard benchmark presets, and randomized scenario generation.
+- Scheduler configuration (FCFS, SJF/SRTF, Priority, Round Robin) & lifecycle controls.
+- Direct POSIX signals (SIGSTOP, SIGCONT, SIGTERM) and live stdout/stderr log retrieval.
+- Host hardware settings (CPU affinity) and Analytics summaries/history.
+"""
 import os
+import random
 import psutil
 from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional, Dict, Any
-from ..database.models import JobCreate, JobUpdate, JobResponse, SchedulerConfig, ProcessAction, SystemSettings
+from ..database.models import JobCreate, JobUpdate, JobResponse, SchedulerConfig, ProcessAction, SystemSettings, RandomBatchRequest
 from ..database.database import get_db_connection
 from ..scheduler.scheduler_engine import scheduler_engine
 from ..process_manager.process_controller import process_controller
@@ -78,13 +87,130 @@ async def create_preset_workload():
         {"name": "RAM Cache Filler (80MB)", "workload_type": "memory", "estimated_burst_time": 5.0, "arrival_time": 1.0, "priority": 5, "description": "Memory buffer allocation and sweeping"},
         {"name": "Disk Sync Logger", "workload_type": "io", "estimated_burst_time": 7.0, "arrival_time": 2.0, "priority": 6, "description": "Simulated disk flush and hash compute"},
         {"name": "Fast Prime Check", "workload_type": "cpu", "estimated_burst_time": 3.0, "arrival_time": 3.0, "priority": 1, "description": "Short burst high-priority math task"},
-        {"name": "System Status Query", "workload_type": "custom", "command": "python3 -c 'import sys, time; time.sleep(2); print(\"System OK\")'", "estimated_burst_time": 2.0, "arrival_time": 4.0, "priority": 2, "description": "Custom validated Python command"}
+        {"name": "System Status Query", "workload_type": "custom", "command": "python3 -c 'import time; [print(f\"[Query] heartbeat {i+1}/4\", flush=True) or time.sleep(0.5) for i in range(4)]'", "estimated_burst_time": 2.0, "arrival_time": 4.0, "priority": 2, "description": "Custom validated Python command"}
     ]
     created = []
     for p in presets:
         j = await scheduler_engine.create_job(p)
         created.append(j)
     return {"success": True, "created_count": len(created), "jobs": created}
+
+@router.post("/jobs/generate-random")
+async def generate_random_workloads(payload: RandomBatchRequest):
+    """Generates realistic randomized OS test cases with varied arrival times, burst lengths, and priorities."""
+    if payload.clear_existing:
+        await scheduler_engine.clear_all_jobs()
+
+    task_templates = [
+        ("Prime Sieve Worker", "cpu", "High-frequency prime verification workload"),
+        ("Matrix Solver", "cpu", "Dense trigonometric matrix multiplication"),
+        ("Page Cache Sweep", "memory", "Active 80MB RAM allocation & page mutation"),
+        ("Disk Sync Daemon", "io", "Temporary file write + fsync + SHA-256 check"),
+        ("Hash Verifier", "cpu", "Iterative cryptographic arithmetic check"),
+        ("Buffer Allocator", "memory", "Resident heap page allocation stress test"),
+        ("WAL Flusher", "io", "Sequential disk flush & integrity readback"),
+        ("Vector Reducer", "cpu", "Floating-point vector transformation loop"),
+        ("Telemetry Probe", "custom", "Direct POSIX Python stdout telemetry emitter"),
+        ("Index Compactor", "io", "Block-level write + fsync verification"),
+        ("Heap Scanner", "memory", "Memory page dirtying and sweep pass"),
+        ("Worker Heartbeat", "custom", "Interactive POSIX diagnostic stream"),
+    ]
+
+    def build_custom_cmd(burst: float, label: str) -> str:
+        steps = max(2, int(round(burst / 0.5)))
+        return (
+            f"python3 -c 'import os, time; "
+            f"[print(f\"[{label}] PID={{os.getpid()}} tick {{i+1}}/{steps}\", flush=True) or time.sleep(0.5) for i in range({steps})]'"
+        )
+
+    jobs_to_create: List[Dict[str, Any]] = []
+    shuffled = task_templates[:]
+    random.shuffle(shuffled)
+
+    if payload.scenario == "convoy":
+        # 1 long heavy CPU job arriving at 0.0s followed by short burst interactive tasks
+        jobs_to_create.append({
+            "name": "Heavy Matrix Batch (Convoy)",
+            "workload_type": "cpu",
+            "estimated_burst_time": 7.5,
+            "arrival_time": 0.0,
+            "priority": 6,
+            "description": "Long CPU task demonstrating FCFS convoy effect vs SJF/RR",
+        })
+        for idx in range(payload.count - 1):
+            t_name, t_type, t_desc = shuffled[idx % len(shuffled)]
+            burst = round(random.choice([1.5, 2.0, 2.5]), 1)
+            arrival = round(0.5 + idx * 0.5, 1)
+            item: Dict[str, Any] = {
+                "name": f"{t_name} #{idx + 1}",
+                "workload_type": t_type,
+                "estimated_burst_time": burst,
+                "arrival_time": arrival,
+                "priority": random.randint(2, 5),
+                "description": f"Short interactive task ({t_desc})",
+            }
+            if t_type == "custom":
+                item["command"] = build_custom_cmd(burst, t_name.replace(" ", ""))
+            jobs_to_create.append(item)
+
+    elif payload.scenario == "priority_burst":
+        # Low priority background jobs arrive first, then urgent Priority 1-2 tasks preempt them
+        for idx in range(payload.count):
+            t_name, t_type, t_desc = shuffled[idx % len(shuffled)]
+            is_urgent = idx >= 2
+            burst = round(random.choice([2.0, 2.5, 3.0]), 1) if is_urgent else round(random.choice([6.0, 7.0]), 1)
+            arrival = 0.0 if idx < 2 else round(1.0 + (idx - 2) * 0.5, 1)
+            prio = random.randint(1, 2) if is_urgent else random.randint(7, 9)
+            item = {
+                "name": f"{'Urgent ' if is_urgent else 'Batch '}{t_name}",
+                "workload_type": t_type,
+                "estimated_burst_time": burst,
+                "arrival_time": arrival,
+                "priority": prio,
+                "description": f"{'High-urgency interrupt task' if is_urgent else 'Low-priority background batch'} ({t_desc})",
+            }
+            if t_type == "custom":
+                item["command"] = build_custom_cmd(burst, t_name.replace(" ", ""))
+            jobs_to_create.append(item)
+
+    else:
+        # 'random' balanced demo mix with staggered arrivals & varied bursts
+        for idx in range(payload.count):
+            t_name, t_type, t_desc = shuffled[idx % len(shuffled)]
+            burst = round(random.randint(3, 13) * 0.5, 1)  # 1.5s .. 6.5s
+            arrival = 0.0 if idx == 0 else round(random.randint(1, 10) * 0.5, 1)  # 0.5s .. 5.0s
+            prio = random.randint(1, 10)
+            suffix = f" #{idx + 1}" if payload.count > len(shuffled) else ""
+            item = {
+                "name": f"{t_name}{suffix}",
+                "workload_type": t_type,
+                "estimated_burst_time": burst,
+                "arrival_time": arrival,
+                "priority": prio,
+                "description": t_desc,
+            }
+            if t_type == "custom":
+                item["command"] = build_custom_cmd(burst, t_name.replace(" ", ""))
+            jobs_to_create.append(item)
+
+    # Sort visually by arrival time before insertion
+    jobs_to_create.sort(key=lambda x: x["arrival_time"])
+    created = []
+    for item in jobs_to_create:
+        created.append(await scheduler_engine.create_job(item))
+
+    return {
+        "success": True,
+        "scenario": payload.scenario,
+        "created_count": len(created),
+        "jobs": created,
+    }
+
+@router.delete("/jobs")
+async def clear_all_jobs():
+    """Stops active runs and clears all queued/completed jobs."""
+    await scheduler_engine.clear_all_jobs()
+    return {"success": True, "message": "All jobs cleared"}
 
 # --- SCHEDULER CONTROLS ---
 
@@ -193,6 +319,18 @@ async def terminate_process_endpoint(job_id: str):
         raise HTTPException(status_code=400, detail="Could not terminate process")
     return {"success": True, "message": f"SIGTERM/SIGKILL sent to job {job_id}"}
 
+@router.get("/processes/{job_id}/logs")
+async def get_process_logs(job_id: str):
+    if job_id not in scheduler_engine.jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job = scheduler_engine.jobs[job_id]
+    log_data = process_controller.get_logs(job_id)
+    log_data["job_name"] = job["name"]
+    log_data["job_status"] = job["status"]
+    log_data["workload_type"] = job["workload_type"]
+    log_data["elapsed_time"] = round(job.get("elapsed_time", 0.0), 2)
+    return log_data
+
 # --- SYSTEM & SETTINGS ---
 
 @router.get("/system/metrics")
@@ -231,6 +369,10 @@ async def update_system_settings(settings: SystemSettings):
 async def get_analytics():
     jobs = list(scheduler_engine.jobs.values())
     summary = get_analytics_summary(jobs, scheduler_engine.sim_start_time, scheduler_engine.current_run_id)
+    summary["algorithm"] = scheduler_engine.algorithm_name
+    summary["is_preemptive"] = scheduler_engine.is_preemptive
+    summary["quantum"] = scheduler_engine.quantum
+    summary["execution_slots"] = scheduler_engine.execution_slots
     return summary
 
 @router.get("/analytics/gantt")

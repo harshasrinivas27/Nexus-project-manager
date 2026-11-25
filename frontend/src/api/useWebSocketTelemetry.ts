@@ -1,3 +1,9 @@
+/**
+ * Real-Time Telemetry React Hook.
+ * Opens a persistent WebSocket to `/ws/live` (automatically upgrading to `wss://` on HTTPS)
+ * to receive 500ms live hardware metrics, PID states, and Gantt timeline slices.
+ * Includes automatic reconnection if the connection drops or backend wakes from cold start.
+ */
 import { useState, useEffect, useRef } from 'react';
 import { SystemMetrics, SchedulerStatus, ProcessLive, GanttEvent } from '../types';
 

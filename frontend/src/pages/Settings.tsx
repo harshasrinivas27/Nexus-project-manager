@@ -1,3 +1,7 @@
+/**
+ * Hardware & Execution Environment Settings Page.
+ * Exposes Linux sched_setaffinity() CPU core pinning and multi-core concurrency slot limits.
+ */
 import React, { useState, useEffect } from 'react';
 import {
   Settings as SettingsIcon,

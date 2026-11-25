@@ -1,3 +1,8 @@
+/**
+ * Control Cockpit (Dashboard) Page.
+ * Displays live KPI counters, per-core host CPU/RAM bars, active Execution Slots
+ * (with direct console log access), a guided 3-step demo strip, and live Gantt timeline.
+ */
 import React from 'react';
 import {
   Layers,
@@ -11,9 +16,11 @@ import {
   Activity,
   Zap,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  Shuffle,
+  Terminal
 } from 'lucide-react';
-import { Job, SchedulerStatus, SystemMetrics, ProcessLive, GanttEvent } from '../types';
+import { Job, SchedulerStatus, SystemMetrics, ProcessLive, GanttEvent, RandomBatchConfig } from '../types';
 import { MetricCard } from '../components/MetricCard';
 import { GanttChart } from '../components/GanttChart';
 
@@ -27,6 +34,8 @@ interface DashboardProps {
   onPauseScheduler: () => void;
   onResetScheduler: () => void;
   onLoadPresets: () => void;
+  onGenerateRandom: (config: RandomBatchConfig) => Promise<void>;
+  onInspectLogs: (jobId: string) => void;
   onNavigate: (tab: string) => void;
 }
 
@@ -40,6 +49,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onPauseScheduler,
   onResetScheduler,
   onLoadPresets,
+  onGenerateRandom,
+  onInspectLogs,
   onNavigate,
 }) => {
   const counts = scheduler?.counts || {
@@ -104,13 +115,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={() => onGenerateRandom({ count: 6, scenario: 'random', clear_existing: true })}
+            title="Generate 6 randomized Linux processes with staggered arrival & burst times"
+            className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-sans font-medium bg-bg-elevated text-accent-secondary border border-accent-secondary/30 hover:bg-bg-hover transition-all duration-150 shadow-sm"
+          >
+            <Shuffle className="w-3.5 h-3.5 text-accent-secondary" />
+            <span>Random Suite (6 Jobs)</span>
+          </button>
+
           {jobs.length === 0 && (
             <button
               onClick={onLoadPresets}
               className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-sans font-medium bg-bg-elevated text-accent-primary border border-accent-primary/30 hover:bg-bg-hover transition-all duration-150 shadow-sm"
             >
               <Sparkles className="w-3.5 h-3.5 text-accent-primary" />
-              <span>Load OS Workload Suite</span>
+              <span>Standard Benchmark</span>
             </button>
           )}
 
@@ -141,6 +161,53 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <span>Reset</span>
           </button>
         </div>
+      </div>
+
+      {/* Interactive Guided Demo Progress Strip */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {[
+          {
+            step: '1',
+            title: 'Queue Random Workloads',
+            desc: counts.total > 0 ? `${counts.total} Linux tasks ready in queue` : 'Click "Random Suite" above or add custom tasks',
+            done: counts.total > 0,
+            tab: 'jobs',
+          },
+          {
+            step: '2',
+            title: 'Execute & Control Signals',
+            desc: isRunning ? `Dispatching via ${scheduler?.algorithm || 'FCFS'} — click any slot to inspect stdout` : 'Click Start Engine or pick a policy in Scheduler',
+            done: isRunning || counts.completed > 0 || processes.length > 0,
+            tab: 'monitor',
+          },
+          {
+            step: '3',
+            title: 'Analyze Gantt & Metrics',
+            desc: counts.completed > 0 ? `${counts.completed} jobs measured (TAT, WT, RT)` : 'Compare FCFS, SJF, Priority & Round Robin live',
+            done: counts.completed > 0,
+            tab: 'analytics',
+          },
+        ].map((item) => (
+          <button
+            key={item.step}
+            onClick={() => onNavigate(item.tab)}
+            className={`text-left p-3.5 rounded-xl border transition-all duration-150 flex items-start space-x-3 ${
+              item.done
+                ? 'bg-bg-card border-status-green/30 hover:border-status-green/50'
+                : 'bg-bg-card/60 border-line-subtle hover:border-line-hover'
+            }`}
+          >
+            <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-mono font-bold shrink-0 ${
+              item.done ? 'bg-status-green/15 text-status-green border border-status-green/30' : 'bg-bg-elevated text-content-muted border border-line-subtle'
+            }`}>
+              {item.done ? '✓' : item.step}
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-sans font-semibold text-content-primary">{item.title}</div>
+              <div className="text-[11px] font-sans text-content-muted truncate mt-0.5">{item.desc}</div>
+            </div>
+          </button>
+        ))}
       </div>
 
       {/* Primary KPI Metrics Grid */}
@@ -330,9 +397,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </span>
                         </div>
                         {proc && (
-                          <div className="flex justify-between text-[11px] pt-2 border-t border-line-subtle text-content-muted">
-                            <span>CPU: <span className="font-mono text-content-primary font-medium">{proc.cpu_percent}%</span></span>
-                            <span>RSS: <span className="font-mono text-content-primary font-medium">{proc.memory_rss_mb} MB</span></span>
+                          <div className="flex justify-between items-center text-[11px] pt-2 border-t border-line-subtle text-content-muted">
+                            <div className="flex space-x-3">
+                              <span>CPU: <span className="font-mono text-content-primary font-medium">{proc.cpu_percent}%</span></span>
+                              <span>RSS: <span className="font-mono text-content-primary font-medium">{proc.memory_rss_mb} MB</span></span>
+                            </div>
+                            <button
+                              onClick={() => onInspectLogs(job.id)}
+                              className="flex items-center space-x-1 text-accent-secondary hover:text-content-primary font-sans font-medium transition-colors"
+                              title="Open live Linux console stream"
+                            >
+                              <Terminal className="w-3 h-3" />
+                              <span>Logs</span>
+                            </button>
                           </div>
                         )}
                       </div>

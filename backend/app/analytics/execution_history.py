@@ -1,3 +1,8 @@
+"""
+Execution History Repository.
+Queries past completed/stopped scheduling runs and their dispatch timeline events
+from SQLite so users can compare multiple algorithms side by side.
+"""
 from typing import List, Dict, Any
 from ..database.database import get_db_connection
 

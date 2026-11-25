@@ -1,3 +1,8 @@
+/**
+ * Interactive Execution Timeline (Gantt Chart) Component.
+ * Groups real DISPATCH -> PREEMPT/RESUME -> COMPLETE intervals by Execution Slot
+ * and renders proportional time bars showing true context-switch slices.
+ */
 import React from 'react';
 import { GanttEvent } from '../types';
 

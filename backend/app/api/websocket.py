@@ -1,3 +1,8 @@
+"""
+Real-Time WebSocket Telemetry Server (/ws/live).
+Maintains persistent browser connections and broadcasts a JSON telemetry snapshot
+every 500ms containing host CPU/RAM stats, live managed PIDs, scheduler state, and Gantt slices.
+"""
 import asyncio
 import json
 import psutil

@@ -1,3 +1,7 @@
+/**
+ * Platform Overview & Landing Page.
+ * Showcases NEXUS architecture, interactive media carousel, and live kernel telemetry ribbon.
+ */
 import React, { useState, useEffect } from 'react';
 import {
   ChevronLeft,

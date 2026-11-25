@@ -1,10 +1,20 @@
+"""
+Linux Process Controller & Signal Dispatcher.
+Spawns genuine OS child processes via subprocess.Popen inside isolated POSIX process groups
+(os.setsid) so signals (SIGSTOP, SIGCONT, SIGTERM, SIGKILL) affect the parent and all child
+subprocesses together without leaving orphan processes behind.
+Also streams live stdout/stderr in daemon threads so pipe buffers never deadlock.
+"""
 import os
 import signal
 import subprocess
 import shlex
 import sys
+import threading
+import time
+from collections import deque
 import psutil
-from typing import Dict, Optional, Tuple, List
+from typing import Dict, Optional, Tuple, List, Any
 
 # List of dangerous tokens/commands prevented for safety
 DANGEROUS_COMMANDS = {
@@ -27,6 +37,40 @@ class ManagedProcess:
         self.command_str = command_str
         self.is_paused = False
         self.exit_code: Optional[int] = None
+        self.logs: deque = deque(maxlen=250)
+        self._log_lock = threading.Lock()
+        self._start_stream_readers()
+
+    def _start_stream_readers(self):
+        if self.popen.stdout:
+            t_out = threading.Thread(target=self._read_stream, args=(self.popen.stdout, "stdout"), daemon=True)
+            t_out.start()
+        if self.popen.stderr:
+            t_err = threading.Thread(target=self._read_stream, args=(self.popen.stderr, "stderr"), daemon=True)
+            t_err.start()
+
+    def _read_stream(self, stream, stream_name: str):
+        try:
+            for line in iter(stream.readline, ""):
+                clean = line.rstrip("\r\n")
+                if clean:
+                    with self._log_lock:
+                        self.logs.append({
+                            "stream": stream_name,
+                            "line": clean,
+                            "ts": round(time.time(), 2)
+                        })
+        except Exception:
+            pass
+        finally:
+            try:
+                stream.close()
+            except Exception:
+                pass
+
+    def get_logs(self) -> List[Dict[str, Any]]:
+        with self._log_lock:
+            return list(self.logs)
 
 class ProcessController:
     def __init__(self):
@@ -115,10 +159,15 @@ class ProcessController:
 
         try:
             # Spawn process in its own session/process group so all children receive signals
+            child_env = os.environ.copy()
+            child_env["PYTHONUNBUFFERED"] = "1"
             proc = subprocess.Popen(
                 args,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+                env=child_env,
                 preexec_fn=os.setsid,
                 close_fds=True
             )
@@ -221,6 +270,34 @@ class ProcessController:
             return True, f"CPU affinity set to cores {cores} for PID {pid}"
         except Exception as e:
             return False, f"Failed to set CPU affinity: {str(e)}"
+
+    def get_logs(self, job_id: str) -> Dict[str, Any]:
+        """Returns captured stdout/stderr lines and process status for a managed job."""
+        if job_id not in self._processes:
+            return {
+                "found": False,
+                "job_id": job_id,
+                "pid": None,
+                "pgid": None,
+                "command": None,
+                "is_paused": False,
+                "is_alive": False,
+                "exit_code": None,
+                "logs": []
+            }
+        proc = self._processes[job_id]
+        alive = self.is_alive(job_id)
+        return {
+            "found": True,
+            "job_id": job_id,
+            "pid": proc.pid,
+            "pgid": proc.pgid,
+            "command": proc.command_str,
+            "is_paused": proc.is_paused,
+            "is_alive": alive,
+            "exit_code": self.get_exit_code(job_id),
+            "logs": proc.get_logs()
+        }
 
     def cleanup_all(self):
         """Terminates all managed process groups on shutdown."""

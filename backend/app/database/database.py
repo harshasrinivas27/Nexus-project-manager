@@ -5,6 +5,11 @@ from typing import Optional
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "nexus.db")
 
 def get_db_connection() -> sqlite3.Connection:
+    """
+    Opens a SQLite connection configured for concurrent real-time access:
+    - WAL (Write-Ahead Logging) allows analytics queries to read simultaneously
+      while the scheduler writes job state updates without locking errors.
+    """
     conn = sqlite3.connect(DB_PATH, timeout=10.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")

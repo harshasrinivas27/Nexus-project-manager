@@ -1,3 +1,8 @@
+/**
+ * Live Kernel Process Monitor & POSIX Signal Controller Page.
+ * Streams real-time CPU & RAM area charts and provides per-PID buttons for
+ * Console stdout inspection, SIGSTOP (freeze), SIGCONT (resume), and SIGTERM (stop).
+ */
 import React, { useState, useEffect } from 'react';
 import {
   Activity,
@@ -5,7 +10,8 @@ import {
   Play,
   Square,
   Cpu,
-  HardDrive
+  HardDrive,
+  Terminal
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { ProcessLive, SystemMetrics, Job } from '../types';
@@ -17,6 +23,7 @@ interface LiveMonitorProps {
   onPauseProcess: (jobId: string) => Promise<void>;
   onResumeProcess: (jobId: string) => Promise<void>;
   onTerminateProcess: (jobId: string) => Promise<void>;
+  onInspectLogs: (jobId: string) => void;
 }
 
 export const LiveMonitor: React.FC<LiveMonitorProps> = ({
@@ -25,6 +32,7 @@ export const LiveMonitor: React.FC<LiveMonitorProps> = ({
   onPauseProcess,
   onResumeProcess,
   onTerminateProcess,
+  onInspectLogs,
 }) => {
   const [telemetryHistory, setTelemetryHistory] = useState<Array<{ time: string; cpu: number; memory: number }>>([]);
 
@@ -248,6 +256,15 @@ export const LiveMonitor: React.FC<LiveMonitorProps> = ({
                       </td>
                       <td className="py-3 px-3 text-right">
                         <div className="flex items-center justify-end space-x-1.5">
+                          <button
+                            onClick={() => onInspectLogs(proc.job_id)}
+                            title="Inspect Live Linux STDOUT/STDERR Output"
+                            className="px-2.5 py-1 rounded-lg bg-accent-secondary/15 hover:bg-accent-secondary/25 text-accent-secondary border border-accent-secondary/30 text-[11px] font-sans font-medium flex items-center space-x-1 transition-colors"
+                          >
+                            <Terminal className="w-3 h-3" />
+                            <span>Console</span>
+                          </button>
+
                           {isAlive && !isPaused && (
                             <button
                               onClick={() => onPauseProcess(proc.job_id)}

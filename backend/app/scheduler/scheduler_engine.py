@@ -10,6 +10,7 @@ from .fcfs import FCFSScheduler
 from .sjf import SJFScheduler
 from .priority import PriorityScheduler
 from .round_robin import RoundRobinScheduler
+from ..analytics.metrics import get_analytics_summary
 
 class SchedulerEngine:
     def __init__(self):
@@ -111,7 +112,8 @@ class SchedulerEngine:
                 "elapsed_time": 0.0,
                 "cpu_time_spent": 0.0,
                 "assigned_slot": None,
-                "error_message": None
+                "error_message": None,
+                "last_ready_at": 0.0
             }
 
             conn = get_db_connection()
@@ -221,6 +223,7 @@ class SchedulerEngine:
     async def reset(self):
         await self.stop()
         async with self.lock:
+            process_controller.cleanup_all()
             for job in self.jobs.values():
                 job["status"] = "PENDING"
                 job["pid"] = None
@@ -236,6 +239,25 @@ class SchedulerEngine:
                 job["error_message"] = None
                 self._sync_job_to_db(job)
 
+            self.running_slots = {i: None for i in range(self.execution_slots)}
+            self.job_slice_times.clear()
+            self.job_event_starts.clear()
+            self.current_run_id = None
+            self.sim_start_time = None
+            self.sim_elapsed_time = 0.0
+
+    async def clear_all_jobs(self):
+        """Stops execution, terminates managed process groups, and clears all jobs."""
+        await self.stop()
+        async with self.lock:
+            process_controller.cleanup_all()
+            conn = get_db_connection()
+            conn.execute("DELETE FROM dispatch_events")
+            conn.execute("DELETE FROM jobs")
+            conn.commit()
+            conn.close()
+
+            self.jobs.clear()
             self.running_slots = {i: None for i in range(self.execution_slots)}
             self.job_slice_times.clear()
             self.job_event_starts.clear()
@@ -262,15 +284,23 @@ class SchedulerEngine:
                 await self._tick(dt)
 
     async def _tick(self, dt: float):
+        """
+        Core 250ms scheduler cycle:
+        1) Admit PENDING jobs whose arrival_time has elapsed into READY.
+        2) Check active RUNNING slots for completion or preemption (Round Robin / SRTF / Priority).
+        3) Dispatch eligible READY jobs into any free execution slots.
+        4) Persist completed run averages when all jobs finish.
+        """
         current_time = self.sim_elapsed_time
 
-        # 1. Check PENDING jobs for arrival
+        # Step 1: Admit PENDING jobs whose simulated arrival_time has been reached
         for job in self.jobs.values():
             if job["status"] == "PENDING" and job["arrival_time"] <= current_time:
                 job["status"] = "READY"
+                job["last_ready_at"] = current_time
                 self._sync_job_to_db(job)
 
-        # 2. Inspect currently RUNNING jobs across execution slots
+        # Step 2: Inspect currently RUNNING jobs across all execution slots
         for slot in range(self.execution_slots):
             job_id = self.running_slots.get(slot)
             if not job_id:
@@ -281,12 +311,12 @@ class SchedulerEngine:
                 self.running_slots[slot] = None
                 continue
 
-            # Update elapsed runtime
+            # Update elapsed CPU wall time and estimated remaining burst time
             job["elapsed_time"] += dt
             job["remaining_burst_time"] = max(0.0, job["remaining_burst_time"] - dt)
             self.job_slice_times[job_id] = self.job_slice_times.get(job_id, 0.0) + dt
 
-            # Check if actual Linux process exited
+            # Check if the underlying Linux child process exited on its own
             if not process_controller.is_alive(job_id):
                 exit_code = process_controller.get_exit_code(job_id) or 0
                 now_ts = time.time()
@@ -309,37 +339,38 @@ class SchedulerEngine:
                 del self.job_slice_times[job_id]
                 continue
 
-            # 3. Algorithm-specific Preemption
-            # Round Robin quantum expiration
+            # Step 3: Policy-based Preemption
+            # Round Robin: freeze process via SIGSTOP once its time quantum expires
             if self.algorithm_name == "ROUND_ROBIN":
                 ready_count = sum(1 for j in self.jobs.values() if j["status"] == "READY")
                 if self.job_slice_times[job_id] >= self.quantum and (ready_count > 0 or self._has_other_runnable(job_id)):
-                    # Preempt via SIGSTOP
                     process_controller.pause_process(job_id)
                     now_ts = time.time()
                     dur = max(0.0, now_ts - self.job_event_starts.get(job_id, now_ts))
                     self._record_event(job_id, "PREEMPT", now_ts, dur, slot)
 
+                    # Move to tail of READY queue using monotonic time so rotation is strictly cyclic
                     job["status"] = "READY"
+                    job["last_ready_at"] = time.monotonic()
                     job["assigned_slot"] = None
                     self._sync_job_to_db(job)
                     self.running_slots[slot] = None
                     self.job_slice_times[job_id] = 0.0
 
-            # Preemptive SJF or Preemptive Priority check
+            # Preemptive SJF (SRTF) or Preemptive Priority: freeze if a better READY job arrived
             elif self.is_preemptive and self.algorithm_name in ("SJF", "PRIORITY"):
                 running_list = [self.jobs[jid] for jid in self.running_slots.values() if jid and jid in self.jobs]
                 ready_list = [j for j in self.jobs.values() if j["status"] == "READY"]
 
                 preempt_info = self._policy.should_preempt(running_list, ready_list)
                 if preempt_info and preempt_info.get("preempt_job_id") == job_id:
-                    # Preempt this job
                     process_controller.pause_process(job_id)
                     now_ts = time.time()
                     dur = max(0.0, now_ts - self.job_event_starts.get(job_id, now_ts))
                     self._record_event(job_id, "PREEMPT", now_ts, dur, slot)
 
                     job["status"] = "READY"
+                    job["last_ready_at"] = time.monotonic()
                     job["assigned_slot"] = None
                     self._sync_job_to_db(job)
                     self.running_slots[slot] = None
@@ -365,8 +396,26 @@ class SchedulerEngine:
         if all_finished and self.status == "RUNNING":
             self.status = "COMPLETED"
             if self.current_run_id:
+                summary = get_analytics_summary(list(self.jobs.values()), self.sim_start_time, self.current_run_id)
                 conn = get_db_connection()
-                conn.execute("UPDATE scheduling_runs SET status = 'COMPLETED', end_time = ? WHERE id = ?", (time.time(), self.current_run_id))
+                conn.execute("""
+                UPDATE scheduling_runs
+                SET status = 'COMPLETED', end_time = ?, total_jobs = ?, completed_jobs = ?, failed_jobs = ?,
+                    avg_waiting_time = ?, avg_turnaround_time = ?, avg_response_time = ?,
+                    cpu_utilization = ?, throughput = ?
+                WHERE id = ?
+                """, (
+                    time.time(),
+                    summary["total_jobs"],
+                    summary["completed_jobs"],
+                    summary["failed_jobs"],
+                    summary["avg_waiting_time"],
+                    summary["avg_turnaround_time"],
+                    summary["avg_response_time"],
+                    summary["cpu_utilization"],
+                    summary["throughput"],
+                    self.current_run_id
+                ))
                 conn.commit()
                 conn.close()
 
@@ -472,6 +521,7 @@ class SchedulerEngine:
 
             # Put back into READY queue so scheduler dispatches it in an available slot
             job["status"] = "READY"
+            job["last_ready_at"] = time.monotonic()
             self._sync_job_to_db(job)
             return True
 

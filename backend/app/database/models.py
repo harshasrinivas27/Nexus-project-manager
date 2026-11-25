@@ -1,3 +1,8 @@
+"""
+Pydantic Request/Response Validation Schemas.
+Enforces strict bounds on job parameters (priority 1-10, arrival >= 0, burst 0.5-300s),
+scheduler policies, random test batch options, and telemetry payloads.
+"""
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
@@ -16,6 +21,12 @@ class JobUpdate(BaseModel):
     arrival_time: Optional[float] = Field(None, ge=0.0)
     estimated_burst_time: Optional[float] = Field(None, ge=0.5, le=300.0)
     description: Optional[str] = None
+
+
+class RandomBatchRequest(BaseModel):
+    count: int = Field(6, ge=3, le=12, description="Number of random test jobs to generate")
+    scenario: str = Field("random", description="'random', 'convoy', or 'priority_burst'")
+    clear_existing: bool = Field(True, description="Whether to clear existing queue before generating")
 
 class JobResponse(BaseModel):
     id: str

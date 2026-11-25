@@ -1,3 +1,8 @@
+/**
+ * Job Creation & Random Testcase Studio Page.
+ * Lets users enqueue custom CPU/Memory/I-O/Command jobs OR generate 5-10 randomized
+ * test cases (Random Mix, Convoy Effect, Priority Burst) in one click for live demos.
+ */
 import React, { useState } from 'react';
 import {
   Layers,
@@ -11,16 +16,23 @@ import {
   ShieldCheck,
   Sparkles,
   CheckCircle2,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Shuffle,
+  Play,
+  Eraser
 } from 'lucide-react';
-import { Job } from '../types';
+import { Job, RandomBatchConfig } from '../types';
 
 interface JobManagerProps {
   jobs: Job[];
   onCreateJob: (jobData: Partial<Job>) => Promise<void>;
   onUpdateJob: (id: string, jobData: Partial<Job>) => Promise<void>;
   onDeleteJob: (id: string) => Promise<void>;
+  onClearAllJobs: () => Promise<void>;
   onLoadPresets: () => Promise<void>;
+  onGenerateRandom: (config: RandomBatchConfig) => Promise<void>;
+  onInspectLogs: (jobId: string) => void;
+  onNavigate: (tab: string) => void;
 }
 
 export const JobManager: React.FC<JobManagerProps> = ({
@@ -28,7 +40,11 @@ export const JobManager: React.FC<JobManagerProps> = ({
   onCreateJob,
   onUpdateJob,
   onDeleteJob,
+  onClearAllJobs,
   onLoadPresets,
+  onGenerateRandom,
+  onInspectLogs,
+  onNavigate,
 }) => {
   // Form State
   const [name, setName] = useState('');
@@ -42,8 +58,26 @@ export const JobManager: React.FC<JobManagerProps> = ({
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Random Generator Studio State
+  const [randomCount, setRandomCount] = useState<number>(6);
+  const [randomScenario, setRandomScenario] = useState<'random' | 'convoy' | 'priority_burst'>('random');
+  const [isGenerating, setIsGenerating] = useState(false);
+
   // Edit Modal State
   const [editingJob, setEditingJob] = useState<Job | null>(null);
+
+  const handleGenerateClick = async () => {
+    try {
+      setIsGenerating(true);
+      await onGenerateRandom({
+        count: randomCount,
+        scenario: randomScenario,
+        clear_existing: true,
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,17 +144,107 @@ export const JobManager: React.FC<JobManagerProps> = ({
             <span>Job Creation &amp; Queue Management</span>
           </h1>
           <p className="text-xs text-content-secondary mt-1 font-sans">
-            Define computational CPU, memory buffer, and disk I/O tasks or tokenized commands for execution dispatch.
+            Define computational CPU, memory buffer, and disk I/O tasks or auto-generate randomized arrival/burst test suites.
           </p>
         </div>
 
-        <button
-          onClick={onLoadPresets}
-          className="flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-sans font-medium bg-bg-card hover:bg-bg-elevated text-accent-primary border border-accent-primary/30 transition-all duration-150 shadow-sm self-start md:self-auto"
-        >
-          <Sparkles className="w-4 h-4 text-accent-primary" />
-          <span>Load Standard Benchmark Suite</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={onLoadPresets}
+            className="flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-sans font-medium bg-bg-card hover:bg-bg-elevated text-accent-primary border border-accent-primary/30 transition-all duration-150 shadow-sm"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-accent-primary" />
+            <span>Standard 5-Job Preset</span>
+          </button>
+
+          {jobs.length > 0 && (
+            <>
+              <button
+                onClick={onClearAllJobs}
+                className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-sans font-medium bg-bg-card hover:bg-status-red/10 text-content-secondary hover:text-status-red border border-line-subtle hover:border-status-red/30 transition-all duration-150"
+              >
+                <Eraser className="w-3.5 h-3.5" />
+                <span>Clear Queue</span>
+              </button>
+
+              <button
+                onClick={() => onNavigate('scheduler')}
+                className="flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-sans font-semibold bg-accent-primary hover:bg-accent-hover text-bg-main shadow-sm transition-all duration-150"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>Pick Policy &amp; Run</span>
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* 1-Click Random Test Case Studio */}
+      <div className="bg-bg-card border border-line-subtle rounded-2xl p-5 shadow-card">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h2 className="text-sm font-semibold font-sans text-content-primary flex items-center space-x-2">
+              <Shuffle className="w-4 h-4 text-accent-secondary" />
+              <span>Instant Random Test Case Generator</span>
+            </h2>
+            <p className="text-xs text-content-secondary font-sans">
+              Generate 5–10 real Linux processes with staggered arrival times, varied burst lengths, and priorities in one click.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Scenario Selector */}
+            <div className="flex items-center bg-bg-subtle p-1 rounded-xl border border-line-subtle">
+              {[
+                { id: 'random', label: 'Random Mix' },
+                { id: 'convoy', label: 'Convoy Effect' },
+                { id: 'priority_burst', label: 'Priority Burst' },
+              ].map((sc) => (
+                <button
+                  key={sc.id}
+                  type="button"
+                  onClick={() => setRandomScenario(sc.id as any)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-sans font-medium transition-all ${
+                    randomScenario === sc.id
+                      ? 'bg-bg-elevated text-accent-primary shadow-sm border border-accent-primary/30'
+                      : 'text-content-secondary hover:text-content-primary'
+                  }`}
+                >
+                  {sc.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Process Count Pills */}
+            <div className="flex items-center space-x-1 bg-bg-subtle p-1 rounded-xl border border-line-subtle">
+              <span className="text-[11px] font-sans text-content-muted px-2">Jobs:</span>
+              {[5, 6, 8, 10].map((cnt) => (
+                <button
+                  key={cnt}
+                  type="button"
+                  onClick={() => setRandomCount(cnt)}
+                  className={`w-7 h-7 rounded-lg text-xs font-mono font-semibold transition-all ${
+                    randomCount === cnt
+                      ? 'bg-accent-primary text-bg-main shadow-sm'
+                      : 'text-content-secondary hover:text-content-primary hover:bg-bg-elevated'
+                  }`}
+                >
+                  {cnt}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleGenerateClick}
+              disabled={isGenerating}
+              className="flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-sans font-semibold bg-accent-secondary hover:brightness-110 text-bg-main shadow-sm transition-all duration-150 disabled:opacity-50"
+            >
+              <Shuffle className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
+              <span>{isGenerating ? 'Generating...' : `Generate ${randomCount} Random Jobs`}</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -373,6 +497,15 @@ export const JobManager: React.FC<JobManagerProps> = ({
                           </td>
                           <td className="py-3 px-3 text-right">
                             <div className="flex items-center justify-end space-x-1.5">
+                              {job.pid && (
+                                <button
+                                  onClick={() => onInspectLogs(job.id)}
+                                  title="Inspect Live Linux Console Output"
+                                  className="p-1.5 text-accent-secondary hover:text-content-primary hover:bg-accent-secondary/15 rounded-lg transition-colors"
+                                >
+                                  <Terminal className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                               {canEdit && (
                                 <button
                                   onClick={() => setEditingJob(job)}

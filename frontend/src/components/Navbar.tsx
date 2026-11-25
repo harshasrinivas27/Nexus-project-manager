@@ -1,3 +1,8 @@
+/**
+ * Top Navigation Bar & Three-Dashed Slide-Out Drawer.
+ * Displays real-time WebSocket connection status, active algorithm summary,
+ * quick Start/Pause/Reset engine controls, and categorized workspace navigation.
+ */
 import React, { useState, useEffect } from 'react';
 import {
   Menu,

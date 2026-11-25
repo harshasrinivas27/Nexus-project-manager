@@ -1,3 +1,11 @@
+"""
+Scheduling Analytics & Gantt Reconstruction Module.
+Computes classical Operating System metrics from real Linux process timestamps:
+- Response Time (RT) = First Start Time - Arrival Time
+- Turnaround Time (TAT) = Completion Time - Arrival Time
+- Waiting Time (WT) = Turnaround Time - Actual Measured Runtime
+Also stitches DISPATCH/PREEMPT/RESUME/COMPLETE events into Gantt timeline bars.
+"""
 import time
 from typing import List, Dict, Any, Optional
 from ..database.database import get_db_connection

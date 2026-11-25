@@ -1,3 +1,6 @@
+/**
+ * Shared TypeScript Interfaces matching FastAPI Pydantic response schemas.
+ */
 export interface Job {
   id: string;
   name: string;
@@ -83,6 +86,9 @@ export interface GanttEvent {
 
 export interface AnalyticsSummary {
   algorithm: string;
+  is_preemptive?: boolean;
+  quantum?: number;
+  execution_slots?: number;
   total_jobs: number;
   completed_jobs: number;
   failed_jobs: number;
@@ -93,6 +99,53 @@ export interface AnalyticsSummary {
   throughput: number;
   jobs: Job[];
   gantt_events: GanttEvent[];
+}
+
+export interface ProcessLogEntry {
+  stream: 'stdout' | 'stderr';
+  line: string;
+  ts: number;
+}
+
+export interface ProcessLogsResponse {
+  found: boolean;
+  job_id: string;
+  job_name?: string;
+  job_status?: string;
+  workload_type?: string;
+  elapsed_time?: number;
+  pid: number | null;
+  pgid: number | null;
+  command: string | null;
+  is_paused: boolean;
+  is_alive: boolean;
+  exit_code: number | null;
+  logs: ProcessLogEntry[];
+}
+
+export interface RandomBatchConfig {
+  count: number;
+  scenario: 'random' | 'convoy' | 'priority_burst';
+  clear_existing: boolean;
+}
+
+export interface SchedulingRunHistory {
+  id: string;
+  algorithm: string;
+  quantum: number;
+  execution_slots: number;
+  is_preemptive: number;
+  start_time: number;
+  end_time: number | null;
+  status: string;
+  total_jobs: number;
+  completed_jobs: number;
+  failed_jobs: number;
+  avg_waiting_time: number;
+  avg_turnaround_time: number;
+  avg_response_time: number;
+  cpu_utilization: number;
+  throughput: number;
 }
 
 export interface SystemSettings {

@@ -1,3 +1,6 @@
+/**
+ * Reusable KPI Stat Card for Dashboard and Analytics metric grids.
+ */
 import React from 'react';
 import { LucideIcon } from 'lucide-react';
 

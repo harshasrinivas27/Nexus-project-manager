@@ -6,7 +6,9 @@ from .process_controller import process_controller, ManagedProcess
 
 class ProcessMonitor:
     def __init__(self):
-        # Cache psutil.Process handles for fast cpu_percent calculations
+        # Cache psutil.Process objects per PID because Linux /proc/<pid>/stat stores
+        # cumulative CPU ticks rather than an instantaneous percentage. Keeping the
+        # handle cached lets cpu_percent() compare ticks since the previous 500ms poll.
         self._psutil_procs: Dict[int, psutil.Process] = {}
 
     def get_system_metrics(self) -> Dict[str, Any]:

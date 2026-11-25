@@ -1,4 +1,9 @@
-import { Job, SchedulerStatus, ProcessLive, SystemMetrics, SystemSettings, AnalyticsSummary, GanttEvent } from '../types';
+/**
+ * REST API Client for NEXUS Backend.
+ * Automatically resolves `/api` on production/Docker hosts (same-origin)
+ * or `http://localhost:8000/api` during Vite local development on port 5173.
+ */
+import { Job, SchedulerStatus, ProcessLive, SystemMetrics, SystemSettings, AnalyticsSummary, GanttEvent, ProcessLogsResponse, RandomBatchConfig, SchedulingRunHistory } from '../types';
 
 const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL ||
   (typeof window !== 'undefined' && window.location.port === '5173'
@@ -34,7 +39,13 @@ export const api = {
   createJob: (data: Partial<Job>) => request<Job>('/jobs', { method: 'POST', body: JSON.stringify(data) }),
   updateJob: (id: string, data: Partial<Job>) => request<Job>(`/jobs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteJob: (id: string) => request<{ success: boolean }>(`/jobs/${id}`, { method: 'DELETE' }),
+  clearAllJobs: () => request<{ success: boolean; message: string }>('/jobs', { method: 'DELETE' }),
   createBatchPreset: () => request<{ success: boolean; created_count: number; jobs: Job[] }>('/jobs/batch-preset', { method: 'POST' }),
+  generateRandomJobs: (config: RandomBatchConfig) =>
+    request<{ success: boolean; scenario: string; created_count: number; jobs: Job[] }>('/jobs/generate-random', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    }),
 
   // Scheduler
   getSchedulerStatus: () => request<SchedulerStatus>('/scheduler/status'),
@@ -47,6 +58,7 @@ export const api = {
 
   // Processes
   getProcesses: () => request<ProcessLive[]>('/processes'),
+  getProcessLogs: (jobId: string) => request<ProcessLogsResponse>(`/processes/${jobId}/logs`),
   pauseProcess: (jobId: string) => request<{ success: boolean; message: string }>(`/processes/${jobId}/pause`, { method: 'POST' }),
   resumeProcess: (jobId: string) => request<{ success: boolean; message: string }>(`/processes/${jobId}/resume`, { method: 'POST' }),
   terminateProcess: (jobId: string) => request<{ success: boolean; message: string }>(`/processes/${jobId}/terminate`, { method: 'POST' }),
@@ -60,5 +72,5 @@ export const api = {
   // Analytics
   getAnalytics: () => request<AnalyticsSummary>('/analytics/summary'),
   getGantt: (runId?: string) => request<GanttEvent[]>(runId ? `/analytics/gantt?run_id=${runId}` : '/analytics/gantt'),
-  getHistory: () => request<any[]>('/analytics/history'),
+  getHistory: () => request<SchedulingRunHistory[]>('/analytics/history'),
 };
